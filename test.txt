@@ -1,0 +1,5 @@
+/a/b|NC|||M
+/a/#version|NC|||
+/a/c/d|NC|||M
+/a/c/e|NC|||M
+/a/items[]/name|NC|||M
