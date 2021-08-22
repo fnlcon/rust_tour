@@ -1,17 +1,29 @@
 use rand::thread_rng;
 use std::collections::LinkedList;
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 enum NodeType {
     String(Option<String>),
     Currency(String),
 }
 
+#[derive(Debug, Clone)]
 struct NodeMeta {
     r#type: Option<NodeType>,
     iteration: bool,
     attribute: bool,
     mandatory: String,
+}
+
+impl Default for NodeMeta {
+    fn default() -> Self {
+        NodeMeta {
+            r#type: None,
+            iteration: false,
+            attribute: false,
+            mandatory: "".to_string()
+        }
+    }
 }
 
 impl From<&str> for NodeMeta {
@@ -38,11 +50,11 @@ impl From<&str> for NodeMeta {
 }
 
 #[derive(Clone, Debug)]
-struct Node(String, LinkedList<Node>);
+struct Node(String, NodeMeta, LinkedList<Node>);
 
 impl<'a> Node {
     pub fn name(&'a self) -> &'a str {
-        let Node(name, _) = self;
+        let Node(name, _, _) = self;
         &name[..]
     }
 }
@@ -58,11 +70,23 @@ enum Path {
     Node(String, bool),
 }
 
+impl From<&str> for Path {
+    fn from(s: &str) -> Self {
+        if s.starts_with("#") {
+            Path::Attribute(s[1..s.len()].to_owned())
+        } else if s.ends_with("[]") {
+            Path::Node(s[0..(s.len() - 2)].to_owned(), true)
+        } else {
+            Path::Node(s[..].to_owned(), false)
+        }
+    }
+}
+
 fn update<'a, I: Iterator<Item=&'a Path>>(node: Node, path: &mut I) -> Node {
     match path.next() {
         None => node,
         Some(Path::Node(node_name, iteration)) => {
-            let Node(name, children) = node;
+            let Node(name, meta, children) = node;
             let exists = children.iter().any(|node| node.name() == &node_name[..]);
             let children = if exists {
                 children
@@ -77,7 +101,7 @@ fn update<'a, I: Iterator<Item=&'a Path>>(node: Node, path: &mut I) -> Node {
                     })
                     .collect()
             } else {
-                let new_node = Node(node_name.to_owned(), Default::default());
+                let new_node = Node(node_name.to_owned(), Default::default(), Default::default());
                 let node = update(new_node, path);
 
                 let mut children = LinkedList::from(children);
@@ -85,7 +109,7 @@ fn update<'a, I: Iterator<Item=&'a Path>>(node: Node, path: &mut I) -> Node {
                 children
             };
 
-            Node(name, children)
+            Node(name, meta, children)
         }
         _ => {
             todo!()
@@ -99,12 +123,13 @@ mod tests {
     use rand::{thread_rng, Rng};
     use std::borrow::{Borrow, BorrowMut};
     use std::collections::LinkedList;
+    use std::fs::File;
 
     #[test]
     fn test_node() {
-        let node = Node("/".to_owned(), LinkedList::default());
+        let node = Node("/".to_owned(), Default::default(), Default::default());
 
-        let Node(name, _) = node;
+        let Node(name, _, _) = node;
 
         assert_eq!(name, "/");
     }
@@ -112,7 +137,7 @@ mod tests {
     #[test]
     fn test_update() {
         let path: Vec<Path> = "/Request/Date".split("/").map(|n| Path::Node(n.to_owned(), false)).collect();
-        let mut node = Node("/".to_owned(), LinkedList::default());
+        let mut node = Node("/".to_owned(), Default::default(), Default::default());
         node = update(node, &mut path.iter());
     }
 
@@ -124,5 +149,21 @@ mod tests {
         assert_eq!(node_meta.iteration, false);
         assert_eq!(node_meta.attribute, false);
         assert_eq!(node_meta.mandatory, "M".to_string());
+    }
+
+    #[test]
+    fn test_iteration() {
+        let mut node = Node("/".to_owned(), Default::default(), Default::default());
+
+        let node = std::fs::read_to_string("/Users/renxunxiao/repos/rust_tour/test.txt").unwrap()
+            .lines()
+            .into_iter()
+            .map(|line| line.split("/").map(From::from).skip(1).collect::<Vec<Path>>())
+            .fold(node, |acc, node| {
+                update(acc, &mut node.iter())
+            });
+
+
+        println!("{:#?}", &node)
     }
 }
