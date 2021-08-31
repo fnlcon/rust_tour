@@ -21,7 +21,7 @@ impl Default for NodeMeta {
             r#type: None,
             iteration: false,
             attribute: false,
-            mandatory: "".to_string()
+            mandatory: "".to_string(),
         }
     }
 }
@@ -44,17 +44,20 @@ impl From<&str> for NodeMeta {
             r#type,
             iteration: false,
             attribute: false,
-            mandatory: spec[3].to_owned()
+            mandatory: spec[3].to_owned(),
         }
     }
 }
 
 #[derive(Clone, Debug)]
-struct Node(String, NodeMeta, LinkedList<Node>);
+struct Attribute(String);
+
+#[derive(Clone, Debug)]
+struct Node(String, NodeMeta, LinkedList<Attribute>, LinkedList<Node>);
 
 impl<'a> Node {
     pub fn name(&'a self) -> &'a str {
-        let Node(name, _, _) = self;
+        let Node(name, _, _, _) = self;
         &name[..]
     }
 }
@@ -83,34 +86,51 @@ impl From<&str> for Path {
 }
 
 fn update<'a, I: Iterator<Item=&'a Path>>(node: Node, path: &mut I) -> Node {
+    fn update_children(children: LinkedList<Node>) -> LinkedList<Node> {
+        children.iter()
+            .map(|node| {
+                let node = node.to_owned();
+                if node.name() == &node_name[..] {
+                    update(node, path)
+                } else {
+                    node
+                }
+            })
+            .collect()
+    }
+
+    fn append_child(children: LinkedList<Node>, node: Node) -> LinkedList<Node> {
+        let mut children = LinkedList::from(children);
+        children.push_back(node);
+        children
+    }
+
     match path.next() {
         None => node,
         Some(Path::Node(node_name, iteration)) => {
-            let Node(name, meta, children) = node;
+            let Node(name, meta, attributes, children) = node;
             let exists = children.iter().any(|node| node.name() == &node_name[..]);
             let children = if exists {
-                children
-                    .iter()
-                    .map(|node| {
-                        let node = node.to_owned();
-                        if node.name() == &node_name[..] {
-                            node
-                        } else {
-                            update(node, path)
-                        }
-                    })
-                    .collect()
+                update_children(children)
             } else {
-                let new_node = Node(node_name.to_owned(), Default::default(), Default::default());
+                let new_node = Node(node_name.to_owned(), Default::default(), Default::default(), Default::default());
                 let node = update(new_node, path);
-
-                let mut children = LinkedList::from(children);
-                children.push_back(node);
-                children
+                append_child(children, node)
             };
 
-            Node(name, meta, children)
+            Node(name, meta, attributes, children)
         }
+
+        Some(Path::Attribute(attribute)) => {
+            match node {
+                Node(name, meta, attributes, children) => {
+                    let mut attributes = LinkedList::from(attributes);
+                    attributes.push_back(Attribute(attribute[..].to_owned()));
+                    Node(name, meta, attributes, children)
+                }
+            }
+        }
+
         _ => {
             todo!()
         }
@@ -127,9 +147,9 @@ mod tests {
 
     #[test]
     fn test_node() {
-        let node = Node("/".to_owned(), Default::default(), Default::default());
+        let node = Node("/".to_owned(), Default::default(), Default::default(), Default::default());
 
-        let Node(name, _, _) = node;
+        let Node(name, _, _, _) = node;
 
         assert_eq!(name, "/");
     }
@@ -137,7 +157,7 @@ mod tests {
     #[test]
     fn test_update() {
         let path: Vec<Path> = "/Request/Date".split("/").map(|n| Path::Node(n.to_owned(), false)).collect();
-        let mut node = Node("/".to_owned(), Default::default(), Default::default());
+        let mut node = Node("/".to_owned(), Default::default(), Default::default(), Default::default());
         node = update(node, &mut path.iter());
     }
 
@@ -153,7 +173,7 @@ mod tests {
 
     #[test]
     fn test_iteration() {
-        let mut node = Node("/".to_owned(), Default::default(), Default::default());
+        let mut node = Node("/".to_owned(), Default::default(), Default::default(), Default::default());
 
         let node = std::fs::read_to_string("/Users/renxunxiao/repos/rust_tour/test.txt").unwrap()
             .lines()
@@ -162,7 +182,6 @@ mod tests {
             .fold(node, |acc, node| {
                 update(acc, &mut node.iter())
             });
-
 
         println!("{:#?}", &node)
     }
