@@ -1,5 +1,7 @@
 [workspace]
 
 members = [
-    "tree_case1"
+    "tree_case1",
+    "httpie",
+    "queryer"
 ]
